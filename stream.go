@@ -24,11 +24,53 @@ type Stream interface {
 
 type stream struct {
 	str quic.Stream
+	*receiveStream
+	*sendStream
 }
 
 var _ Stream = &stream{}
 
-func (s *stream) maybeConvertStreamError(err error) error {
+func newStream(str quic.Stream) *stream {
+	return &stream{
+		str:           str,
+		receiveStream: newReceiveStream(str),
+		sendStream:    newSendStream(str),
+	}
+}
+
+func (s *stream) Read(b []byte) (int, error) {
+	return s.receiveStream.Read(b)
+}
+
+func (s *stream) Write(b []byte) (int, error) {
+	return s.sendStream.Write(b)
+}
+
+func (s *stream) CancelRead(e ErrorCode) {
+	s.receiveStream.CancelRead(e)
+}
+
+func (s *stream) CancelWrite(e ErrorCode) {
+	s.sendStream.CancelWrite(e)
+}
+
+func (s *stream) Close() error {
+	return maybeConvertStreamError(s.str.Close())
+}
+
+func (s *stream) SetDeadline(t time.Time) error {
+	return s.str.SetDeadline(t)
+}
+
+func (s *stream) SetReadDeadline(t time.Time) error {
+	return s.receiveStream.SetReadDeadline(t)
+}
+
+func (s *stream) SetWriteDeadline(t time.Time) error {
+	return s.sendStream.SetWriteDeadline(t)
+}
+
+func maybeConvertStreamError(err error) error {
 	if err == nil {
 		return nil
 	}
@@ -41,38 +83,4 @@ func (s *stream) maybeConvertStreamError(err error) error {
 		return &StreamError{ErrorCode: errorCode}
 	}
 	return err
-}
-
-func (s *stream) Read(b []byte) (int, error) {
-	n, err := s.str.Read(b)
-	return n, s.maybeConvertStreamError(err)
-}
-
-func (s *stream) Write(b []byte) (int, error) {
-	n, err := s.str.Write(b)
-	return n, s.maybeConvertStreamError(err)
-}
-
-func (s *stream) CancelRead(e ErrorCode) {
-	s.str.CancelRead(webtransportCodeToHTTPCode(e))
-}
-
-func (s *stream) CancelWrite(e ErrorCode) {
-	s.str.CancelWrite(webtransportCodeToHTTPCode(e))
-}
-
-func (s *stream) Close() error {
-	return s.maybeConvertStreamError(s.str.Close())
-}
-
-func (s *stream) SetDeadline(t time.Time) error {
-	return s.maybeConvertStreamError(s.str.SetDeadline(t))
-}
-
-func (s *stream) SetReadDeadline(t time.Time) error {
-	return s.maybeConvertStreamError(s.str.SetReadDeadline(t))
-}
-
-func (s *stream) SetWriteDeadline(t time.Time) error {
-	return s.maybeConvertStreamError(s.str.SetWriteDeadline(t))
 }

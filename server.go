@@ -23,7 +23,8 @@ const (
 )
 
 const (
-	webTransportFrameType = 0x41
+	webTransportFrameType  http3.FrameType  = 0x41
+	webTransportStreamType http3.StreamType = 0x54
 )
 
 type streamIDGetter interface {
@@ -96,6 +97,17 @@ func (s *Server) init() error {
 		s.conns.AddStream(qconn, str, sessionID(id))
 		return true, nil
 	}
+	s.H3.UniStreamHijacker = func(ft http3.StreamType, qconn quic.Connection, str quic.ReceiveStream) (hijacked bool) {
+		if ft != webTransportStreamType {
+			return false
+		}
+		id, err := quicvarint.Read(quicvarint.NewReader(str))
+		if err != nil {
+			return false
+		}
+		s.conns.AddUniStream(qconn, str, sessionID(id))
+		return true
+	}
 	return nil
 }
 
@@ -137,6 +149,13 @@ func (s *Server) Close() error {
 	return err
 }
 
+func (s *Server) Shutdown(ctx context.Context) error {
+	if err := s.H3.Shutdown(ctx); err != nil {
+		return err
+	}
+	return s.Close()
+}
+
 func (s *Server) Upgrade(w http.ResponseWriter, r *http.Request) (*Conn, error) {
 	if r.Method != http.MethodConnect {
 		return nil, fmt.Errorf("expected CONNECT request, got %s", r.Method)
@@ -165,7 +184,7 @@ func (s *Server) Upgrade(w http.ResponseWriter, r *http.Request) (*Conn, error) 
 		return nil, errors.New("failed to hijack")
 	}
 	qconn := hijacker.StreamCreator()
-	c := newConn(sID, qconn, r.Body)
+	c := newConn(hijacker.Stream().Context(), sID, qconn, r.Body)
 	s.conns.AddSession(qconn, sID, c)
 	return c, nil
 }
