@@ -3,6 +3,7 @@ package webtransport
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -63,6 +64,17 @@ func (d *Dialer) init() {
 			d.conns.AddStream(conn, str, sessionID(id))
 			return true, nil
 		},
+		UniStreamHijacker: func(st http3.StreamType, conn quic.Connection, str quic.ReceiveStream) (hijacked bool) {
+			if st != webTransportStreamType {
+				return false
+			}
+			id, err := quicvarint.Read(quicvarint.NewReader(str))
+			if err != nil {
+				return false
+			}
+			d.conns.AddUniStream(conn, str, sessionID(id))
+			return true
+		},
 	}
 }
 
@@ -93,9 +105,13 @@ func (d *Dialer) Dial(ctx context.Context, urlStr string, reqHdr http.Header) (*
 	if rsp.StatusCode < 200 || rsp.StatusCode >= 300 {
 		return rsp, nil, fmt.Errorf("received status %d", rsp.StatusCode)
 	}
-	qconn := rsp.Body.(http3.Hijacker).StreamCreator()
+	hijacker, ok := rsp.Body.(http3.Hijacker)
+	if !ok { // should never happen, unless quic-go changed the API
+		return nil, nil, errors.New("failed to hijack")
+	}
+	qconn := hijacker.StreamCreator()
 	id := sessionID(rsp.Body.(streamIDGetter).StreamID())
-	conn := newConn(id, qconn, rsp.Body)
+	conn := newConn(hijacker.Stream().Context(), id, qconn, rsp.Body)
 	d.conns.AddSession(qconn, id, conn)
 	return rsp, conn, nil
 }
