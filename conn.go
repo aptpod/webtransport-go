@@ -5,19 +5,20 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"net"
 	"sync"
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/lucas-clemente/quic-go/quicvarint"
+	"github.com/marten-seemann/webtransport-go/internal/logging"
 )
 
 // sessionID is the WebTransport Session ID
 type sessionID uint64
 
 type Conn struct {
+	logger     logging.Logger
 	sessionID  sessionID
 	qconn      http3.StreamCreator
 	requestStr io.Closer
@@ -44,6 +45,7 @@ type Conn struct {
 
 func newConn(ctx context.Context, sessionID sessionID, qconn http3.StreamCreator, requestStr io.Closer) *Conn {
 	c := &Conn{
+		logger:           logging.DefaultLogger.WithPrefix("conn"),
 		sessionID:        sessionID,
 		qconn:            qconn,
 		requestStr:       requestStr,
@@ -216,7 +218,7 @@ func (c *Conn) handleDatagram(data []byte) {
 	select {
 	case c.rcvDatagramQueue <- data:
 	default:
-		log.Printf("Discarding DATAGRAM frame (%d bytes payload)", len(data))
+		c.logger.Infof("Discarding DATAGRAM frame (%d bytes payload)", len(data))
 	}
 }
 

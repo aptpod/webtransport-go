@@ -14,6 +14,7 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/lucas-clemente/quic-go/quicvarint"
+	"github.com/marten-seemann/webtransport-go/internal/logging"
 )
 
 const (
@@ -52,6 +53,7 @@ type Server struct {
 	ctx       context.Context // is closed when Close is called
 	ctxCancel context.CancelFunc
 	refCount  sync.WaitGroup
+	logger    logging.Logger
 
 	initOnce sync.Once
 	initErr  error
@@ -72,7 +74,11 @@ func (s *Server) init() error {
 	if timeout == 0 {
 		timeout = 5 * time.Second
 	}
-	s.conns = newSessionManager(timeout)
+	if s.logger == nil {
+		s.logger = logging.DefaultLogger.WithPrefix("server")
+	}
+
+	s.conns = newSessionManager(s.logger, timeout)
 	if s.CheckOrigin == nil {
 		s.CheckOrigin = checkSameOrigin
 	}
@@ -96,6 +102,9 @@ func (s *Server) init() error {
 		}
 		s.conns.AddStream(qconn, str, sessionID(id))
 		return true, nil
+	}
+	if s.H3.UniStreamHijacker != nil {
+		return errors.New("UniStreamHijacker already set")
 	}
 	s.H3.UniStreamHijacker = func(ft http3.StreamType, qconn quic.Connection, str quic.ReceiveStream) (hijacked bool) {
 		if ft != webTransportStreamType {
@@ -137,6 +146,8 @@ func (s *Server) Close() error {
 	// This is expected to be uncommon.
 	// It only happens if the server is closed without Serve / ListenAndServe having been called.
 	s.initOnce.Do(func() {})
+
+	s.logger.Infof("closing server")
 
 	if s.ctxCancel != nil {
 		s.ctxCancel()

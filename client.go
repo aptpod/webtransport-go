@@ -13,6 +13,7 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/lucas-clemente/quic-go/quicvarint"
+	"github.com/marten-seemann/webtransport-go/internal/logging"
 )
 
 type Dialer struct {
@@ -36,8 +37,8 @@ type Dialer struct {
 
 	initOnce     sync.Once
 	roundTripper *http3.RoundTripper
-
-	conns sessionManager
+	logger       logging.Logger
+	conns        sessionManager
 }
 
 func (d *Dialer) init() {
@@ -45,7 +46,11 @@ func (d *Dialer) init() {
 	if timeout == 0 {
 		timeout = 5 * time.Second
 	}
-	d.conns = *newSessionManager(timeout)
+	if d.logger == nil {
+		d.logger = logging.DefaultLogger.WithPrefix("client")
+	}
+
+	d.conns = *newSessionManager(d.logger, timeout)
 	d.ctx, d.ctxCancel = context.WithCancel(context.Background())
 	d.roundTripper = &http3.RoundTripper{
 		TLSClientConfig:    d.TLSClientConf,
@@ -117,6 +122,7 @@ func (d *Dialer) Dial(ctx context.Context, urlStr string, reqHdr http.Header) (*
 }
 
 func (d *Dialer) Close() error {
+	d.logger.Infof("closing dialer")
 	d.ctxCancel()
 	return nil
 }

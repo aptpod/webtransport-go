@@ -3,13 +3,13 @@ package webtransport
 import (
 	"bytes"
 	"context"
-	"log"
 	"sync"
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/lucas-clemente/quic-go/quicvarint"
+	"github.com/marten-seemann/webtransport-go/internal/logging"
 )
 
 // sessionKey is used as a map key in the sessions map
@@ -26,6 +26,7 @@ type session struct {
 }
 
 type sessionManager struct {
+	logger    logging.Logger
 	refCount  sync.WaitGroup
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -39,8 +40,9 @@ type sessionManager struct {
 	conns map[http3.StreamCreator]struct{}
 }
 
-func newSessionManager(timeout time.Duration) *sessionManager {
+func newSessionManager(logger logging.Logger, timeout time.Duration) *sessionManager {
 	m := &sessionManager{
+		logger:   logger,
 		timeout:  timeout,
 		sessions: make(map[sessionKey]*session),
 		conns:    make(map[http3.StreamCreator]struct{}),
@@ -178,21 +180,23 @@ func (m *sessionManager) handleDatagram(qconn http3.StreamCreator) {
 	for {
 		data, err := qconn.ReceiveMessage()
 		if err != nil {
-			log.Printf("qconn ReceiveMessage failed: %s", err)
+			m.logger.Debugf("ReceiveMessage from quic.Connection failed: %s", err)
 			return
 		}
 		if len(data) == 0 {
-			log.Printf("got empty datagram message")
+			m.logger.Infof("got empty datagram message")
+			return
 		}
 
 		v, err := quicvarint.Read(quicvarint.NewReader(bytes.NewReader(data)))
 		if err != nil {
-			log.Printf("reading session id failed: %s", err)
+			m.logger.Errorf("reading session id failed: %s", err)
 			continue
 		}
 		sessionID := sessionID(v)
 		key := sessionKey{qconn: qconn, id: sessionID}
 		if sess, ok := m.sessions[key]; ok {
+			m.logger.Debugf("Datagram received on session id %d: %s", sessionID, err)
 			sess.conn.handleDatagram(data[1:])
 		}
 	}
