@@ -43,6 +43,8 @@ type Conn struct {
 	rcvDatagramQueue chan []byte
 }
 
+var ErrConnClosed = errors.New("webtransport: connection closed")
+
 func newConn(ctx context.Context, sessionID sessionID, qconn http3.StreamCreator, requestStr io.Closer) *Conn {
 	c := &Conn{
 		logger:           logging.DefaultLogger.WithPrefix("conn"),
@@ -210,7 +212,7 @@ func (c *Conn) ReceiveMessage() ([]byte, error) {
 	case data := <-c.rcvDatagramQueue:
 		return data, nil
 	case <-c.ctx.Done():
-		return nil, errors.New("conn closed")
+		return nil, ErrConnClosed
 	}
 }
 
