@@ -225,6 +225,7 @@ func (c *Conn) handleDatagram(data []byte) {
 }
 
 func (c *Conn) Close() error {
+	c.logger.Debugf("closing conn")
 	c.ctxCancel()
 	return c.requestStr.Close()
 }
