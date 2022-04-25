@@ -178,6 +178,12 @@ func (m *sessionManager) AddSession(qconn http3.StreamCreator, id sessionID, con
 
 func (m *sessionManager) handleDatagram(qconn http3.StreamCreator) {
 	for {
+		select {
+		case <-m.ctx.Done():
+			return
+		default:
+		}
+
 		data, err := qconn.ReceiveMessage()
 		if err != nil {
 			m.logger.Debugf("ReceiveMessage from quic.Connection failed: %s", err)
@@ -196,7 +202,7 @@ func (m *sessionManager) handleDatagram(qconn http3.StreamCreator) {
 		sessionID := sessionID(v)
 		key := sessionKey{qconn: qconn, id: sessionID}
 		if sess, ok := m.sessions[key]; ok {
-			m.logger.Debugf("Datagram received on session id %d: %s", sessionID, err)
+			m.logger.Debugf("Datagram %dbytes received on session id %d", len(data), sessionID)
 			sess.conn.handleDatagram(data[1:])
 		}
 	}
