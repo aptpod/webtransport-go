@@ -116,7 +116,7 @@ func (d *Dialer) Dial(ctx context.Context, urlStr string, reqHdr http.Header) (*
 	}
 	qconn := hijacker.StreamCreator()
 	id := sessionID(rsp.Body.(streamIDGetter).StreamID())
-	conn := newConn(hijacker.Stream().Context(), id, qconn, rsp.Body)
+	conn := newConn(hijacker.Stream().Context(), id, qconn, rsp.Body, d.logger)
 	d.conns.AddSession(qconn, id, conn)
 	return rsp, conn, nil
 }

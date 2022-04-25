@@ -45,9 +45,9 @@ type Conn struct {
 
 var ErrConnClosed = errors.New("webtransport: connection closed")
 
-func newConn(ctx context.Context, sessionID sessionID, qconn http3.StreamCreator, requestStr io.Closer) *Conn {
+func newConn(ctx context.Context, sessionID sessionID, qconn http3.StreamCreator, requestStr io.Closer, logger logging.Logger) *Conn {
 	c := &Conn{
-		logger:           logging.DefaultLogger.WithPrefix("conn"),
+		logger:           logger.WithPrefix("conn:"),
 		sessionID:        sessionID,
 		qconn:            qconn,
 		requestStr:       requestStr,
@@ -225,7 +225,7 @@ func (c *Conn) handleDatagram(data []byte) {
 }
 
 func (c *Conn) Close() error {
-	c.logger.Debugf("closing conn")
+	c.logger.Debugf("closing")
 	c.ctxCancel()
 	return c.requestStr.Close()
 }

@@ -196,7 +196,7 @@ func (s *Server) Upgrade(w http.ResponseWriter, r *http.Request) (*Conn, error) 
 		return nil, errors.New("failed to hijack")
 	}
 	qconn := hijacker.StreamCreator()
-	c := newConn(hijacker.Stream().Context(), sID, qconn, r.Body)
+	c := newConn(hijacker.Stream().Context(), sID, qconn, r.Body, s.logger)
 	s.conns.AddSession(qconn, sID, c)
 	return c, nil
 }
