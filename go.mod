@@ -31,4 +31,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c // indirect
 )
 
-replace github.com/lucas-clemente/quic-go => github.com/hareku/quic-go v0.27.1-0.20220425042421-0817044c2908
+replace github.com/lucas-clemente/quic-go => github.com/hareku/quic-go v0.27.1-0.20220425105711-4515e573a80f
