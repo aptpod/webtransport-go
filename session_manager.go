@@ -180,11 +180,12 @@ func (m *sessionManager) handleDatagram(qconn http3.StreamCreator) {
 	for {
 		select {
 		case <-m.ctx.Done():
+			m.logger.Debugf("datagram handling done in a one quic connection.")
 			return
 		default:
 		}
 
-		data, err := qconn.ReceiveMessage()
+		data, err := qconn.(quic.Connection).ReceiveMessage()
 		if err != nil {
 			m.logger.Debugf("ReceiveMessage from quic.Connection failed: %s", err)
 			return

@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"sync"
@@ -83,6 +84,40 @@ func (d *Dialer) init() {
 	}
 }
 
+type contextBody struct {
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+}
+
+func newContextBody(ctx context.Context) io.ReadCloser {
+	ctx, cancel := context.WithCancel(ctx)
+	return &contextBody{
+		ctx,
+		cancel,
+	}
+}
+
+func (b *contextBody) Read(p []byte) (int, error) {
+	<-b.ctx.Done()
+	return 0, io.EOF
+}
+
+func (b *contextBody) Close() error {
+	b.ctxCancel()
+	return nil
+}
+
+type sessionCloser struct {
+	reqBody  io.Closer
+	respBody io.Closer
+}
+
+func (s *sessionCloser) Close() error {
+	s.reqBody.Close()
+	s.respBody.Close()
+	return nil
+}
+
 func (d *Dialer) Dial(ctx context.Context, urlStr string, reqHdr http.Header) (*http.Response, *Conn, error) {
 	d.initOnce.Do(func() { d.init() })
 
@@ -101,6 +136,8 @@ func (d *Dialer) Dial(ctx context.Context, urlStr string, reqHdr http.Header) (*
 		Host:   u.Host,
 		URL:    u,
 	}
+	body := newContextBody(ctx)
+	req.Body = body
 	req = req.WithContext(ctx)
 
 	rsp, err := d.roundTripper.RoundTripOpt(req, http3.RoundTripOpt{})
@@ -116,7 +153,8 @@ func (d *Dialer) Dial(ctx context.Context, urlStr string, reqHdr http.Header) (*
 	}
 	qconn := hijacker.StreamCreator()
 	id := sessionID(rsp.Body.(streamIDGetter).StreamID())
-	conn := newConn(context.Background(), id, qconn, rsp.Body, d.logger)
+
+	conn := newConn(hijacker.Stream().Context(), id, qconn, &sessionCloser{body, rsp.Body}, d.logger)
 	d.conns.AddSession(qconn, id, conn)
 	return rsp, conn, nil
 }
