@@ -203,7 +203,7 @@ func (m *sessionManager) handleDatagram(qconn http3.StreamCreator) {
 		sessionID := sessionID(v)
 		key := sessionKey{qconn: qconn, id: sessionID}
 		if sess, ok := m.sessions[key]; ok {
-			m.logger.Debugf("Datagram %dbytes received on session id %d", len(data), sessionID)
+			m.logger.Debugf("Datagram %dbytes received on session id %d", len(data[1:]), sessionID)
 			sess.conn.handleDatagram(data[1:])
 		}
 	}
