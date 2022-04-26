@@ -3,6 +3,7 @@ package webtransport
 import (
 	"bytes"
 	"context"
+	"io"
 	"sync"
 	"time"
 
@@ -195,7 +196,8 @@ func (m *sessionManager) handleDatagram(qconn http3.StreamCreator) {
 			return
 		}
 
-		v, err := quicvarint.Read(quicvarint.NewReader(bytes.NewReader(data)))
+		r := quicvarint.NewReader(bytes.NewReader(data))
+		v, err := quicvarint.Read(r)
 		if err != nil {
 			m.logger.Errorf("reading session id failed: %s", err)
 			continue
@@ -203,8 +205,13 @@ func (m *sessionManager) handleDatagram(qconn http3.StreamCreator) {
 		sessionID := sessionID(v)
 		key := sessionKey{qconn: qconn, id: sessionID}
 		if sess, ok := m.sessions[key]; ok {
-			m.logger.Debugf("Datagram %dbytes received on session id %d", len(data[1:]), sessionID)
-			sess.conn.handleDatagram(data[1:])
+			appdata, err := io.ReadAll(r)
+			if err != nil {
+				m.logger.Errorf("failed to read all datagram message: %+v", err)
+				return
+			}
+			m.logger.Debugf("Datagram %dbytes received on session id %d", len(appdata), sessionID)
+			sess.conn.handleDatagram(appdata)
 		}
 	}
 }
