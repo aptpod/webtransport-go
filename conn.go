@@ -41,6 +41,7 @@ type Conn struct {
 	acceptUniQueue []quic.ReceiveStream
 
 	rcvDatagramQueue chan []byte
+	sendMu           sync.Mutex
 }
 
 var ErrConnClosed = errors.New("webtransport: connection closed")
@@ -203,7 +204,11 @@ func (c *Conn) RemoteAddr() net.Addr {
 func (c *Conn) SendMessage(b []byte) error {
 	buf := &bytes.Buffer{}
 	quicvarint.Write(buf, uint64(c.sessionID))
-	buf.Write(b)
+	if _, err := buf.Write(b); err != nil {
+		return err
+	}
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
 	return c.qconn.SendMessage(buf.Bytes())
 }
 
