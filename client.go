@@ -142,13 +142,18 @@ func (d *Dialer) Dial(ctx context.Context, urlStr string, reqHdr http.Header) (*
 
 	rsp, err := d.roundTripper.RoundTripOpt(req, http3.RoundTripOpt{})
 	if err != nil {
+		body.Close()
 		return nil, nil, err
 	}
 	if rsp.StatusCode < 200 || rsp.StatusCode >= 300 {
+		body.Close()
+		rsp.Body.Close()
 		return rsp, nil, fmt.Errorf("received status %d", rsp.StatusCode)
 	}
 	hijacker, ok := rsp.Body.(http3.Hijacker)
 	if !ok { // should never happen, unless quic-go changed the API
+		body.Close()
+		rsp.Body.Close()
 		return nil, nil, errors.New("failed to hijack")
 	}
 	qconn := hijacker.StreamCreator()
