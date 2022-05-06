@@ -14,6 +14,7 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/lucas-clemente/quic-go/quicvarint"
+	"github.com/marten-seemann/webtransport-go/internal/logging"
 )
 
 const (
@@ -23,7 +24,8 @@ const (
 )
 
 const (
-	webTransportFrameType = 0x41
+	webTransportFrameType  http3.FrameType  = 0x41
+	webTransportStreamType http3.StreamType = 0x54
 )
 
 type streamIDGetter interface {
@@ -51,6 +53,7 @@ type Server struct {
 	ctx       context.Context // is closed when Close is called
 	ctxCancel context.CancelFunc
 	refCount  sync.WaitGroup
+	logger    logging.Logger
 
 	initOnce sync.Once
 	initErr  error
@@ -62,6 +65,7 @@ func (s *Server) initialize() error {
 	s.initOnce.Do(func() {
 		s.initErr = s.init()
 	})
+	s.logger.Infof("initialized")
 	return s.initErr
 }
 
@@ -71,7 +75,11 @@ func (s *Server) init() error {
 	if timeout == 0 {
 		timeout = 5 * time.Second
 	}
-	s.conns = newSessionManager(timeout)
+	if s.logger == nil {
+		s.logger = logging.DefaultLogger.WithPrefix("server:")
+	}
+
+	s.conns = newSessionManager(s.logger, timeout)
 	if s.CheckOrigin == nil {
 		s.CheckOrigin = checkSameOrigin
 	}
@@ -95,6 +103,20 @@ func (s *Server) init() error {
 		}
 		s.conns.AddStream(qconn, str, sessionID(id))
 		return true, nil
+	}
+	if s.H3.UniStreamHijacker != nil {
+		return errors.New("UniStreamHijacker already set")
+	}
+	s.H3.UniStreamHijacker = func(ft http3.StreamType, qconn quic.Connection, str quic.ReceiveStream) (hijacked bool) {
+		if ft != webTransportStreamType {
+			return false
+		}
+		id, err := quicvarint.Read(quicvarint.NewReader(str))
+		if err != nil {
+			return false
+		}
+		s.conns.AddUniStream(qconn, str, sessionID(id))
+		return true
 	}
 	return nil
 }
@@ -126,6 +148,8 @@ func (s *Server) Close() error {
 	// It only happens if the server is closed without Serve / ListenAndServe having been called.
 	s.initOnce.Do(func() {})
 
+	s.logger.Infof("closing server")
+
 	if s.ctxCancel != nil {
 		s.ctxCancel()
 	}
@@ -135,6 +159,13 @@ func (s *Server) Close() error {
 	err := s.H3.Close()
 	s.refCount.Wait()
 	return err
+}
+
+func (s *Server) Shutdown(ctx context.Context) error {
+	if err := s.H3.Shutdown(ctx); err != nil {
+		return err
+	}
+	return s.Close()
 }
 
 func (s *Server) Upgrade(w http.ResponseWriter, r *http.Request) (*Conn, error) {
@@ -165,7 +196,7 @@ func (s *Server) Upgrade(w http.ResponseWriter, r *http.Request) (*Conn, error) 
 		return nil, errors.New("failed to hijack")
 	}
 	qconn := hijacker.StreamCreator()
-	c := newConn(sID, qconn, r.Body)
+	c := newConn(hijacker.Stream().Context(), sID, qconn, r.Body, s.logger)
 	s.conns.AddSession(qconn, sID, c)
 	return c, nil
 }

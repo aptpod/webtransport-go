@@ -3,7 +3,9 @@ package webtransport
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"sync"
@@ -12,6 +14,7 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/lucas-clemente/quic-go/quicvarint"
+	"github.com/marten-seemann/webtransport-go/internal/logging"
 )
 
 type Dialer struct {
@@ -35,8 +38,8 @@ type Dialer struct {
 
 	initOnce     sync.Once
 	roundTripper *http3.RoundTripper
-
-	conns sessionManager
+	logger       logging.Logger
+	conns        sessionManager
 }
 
 func (d *Dialer) init() {
@@ -44,7 +47,11 @@ func (d *Dialer) init() {
 	if timeout == 0 {
 		timeout = 5 * time.Second
 	}
-	d.conns = *newSessionManager(timeout)
+	if d.logger == nil {
+		d.logger = logging.DefaultLogger.WithPrefix("client:")
+	}
+
+	d.conns = *newSessionManager(d.logger, timeout)
 	d.ctx, d.ctxCancel = context.WithCancel(context.Background())
 	d.roundTripper = &http3.RoundTripper{
 		TLSClientConfig:    d.TLSClientConf,
@@ -63,7 +70,52 @@ func (d *Dialer) init() {
 			d.conns.AddStream(conn, str, sessionID(id))
 			return true, nil
 		},
+		UniStreamHijacker: func(st http3.StreamType, conn quic.Connection, str quic.ReceiveStream) (hijacked bool) {
+			if st != webTransportStreamType {
+				return false
+			}
+			id, err := quicvarint.Read(quicvarint.NewReader(str))
+			if err != nil {
+				return false
+			}
+			d.conns.AddUniStream(conn, str, sessionID(id))
+			return true
+		},
 	}
+}
+
+type contextBody struct {
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+}
+
+func newContextBody(ctx context.Context) io.ReadCloser {
+	ctx, cancel := context.WithCancel(ctx)
+	return &contextBody{
+		ctx,
+		cancel,
+	}
+}
+
+func (b *contextBody) Read(p []byte) (int, error) {
+	<-b.ctx.Done()
+	return 0, io.EOF
+}
+
+func (b *contextBody) Close() error {
+	b.ctxCancel()
+	return nil
+}
+
+type sessionCloser struct {
+	reqBody  io.Closer
+	respBody io.Closer
+}
+
+func (s *sessionCloser) Close() error {
+	s.reqBody.Close()
+	s.respBody.Close()
+	return nil
 }
 
 func (d *Dialer) Dial(ctx context.Context, urlStr string, reqHdr http.Header) (*http.Response, *Conn, error) {
@@ -84,23 +136,36 @@ func (d *Dialer) Dial(ctx context.Context, urlStr string, reqHdr http.Header) (*
 		Host:   u.Host,
 		URL:    u,
 	}
+	body := newContextBody(ctx)
+	req.Body = body
 	req = req.WithContext(ctx)
 
 	rsp, err := d.roundTripper.RoundTripOpt(req, http3.RoundTripOpt{})
 	if err != nil {
+		body.Close()
 		return nil, nil, err
 	}
 	if rsp.StatusCode < 200 || rsp.StatusCode >= 300 {
+		body.Close()
+		rsp.Body.Close()
 		return rsp, nil, fmt.Errorf("received status %d", rsp.StatusCode)
 	}
-	qconn := rsp.Body.(http3.Hijacker).StreamCreator()
+	hijacker, ok := rsp.Body.(http3.Hijacker)
+	if !ok { // should never happen, unless quic-go changed the API
+		body.Close()
+		rsp.Body.Close()
+		return nil, nil, errors.New("failed to hijack")
+	}
+	qconn := hijacker.StreamCreator()
 	id := sessionID(rsp.Body.(streamIDGetter).StreamID())
-	conn := newConn(id, qconn, rsp.Body)
+
+	conn := newConn(hijacker.Stream().Context(), id, qconn, &sessionCloser{body, rsp.Body}, d.logger)
 	d.conns.AddSession(qconn, id, conn)
 	return rsp, conn, nil
 }
 
 func (d *Dialer) Close() error {
+	d.logger.Infof("closing dialer")
 	d.ctxCancel()
 	return nil
 }
