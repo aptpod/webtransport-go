@@ -165,6 +165,7 @@ func (m *sessionManager) AddSession(qconn http3.StreamCreator, id sessionID, con
 	if sess, ok := m.sessions[key]; ok {
 		sess.conn = conn
 		close(sess.created)
+		go m.handleDatagram(qconn)
 		return
 	}
 	c := make(chan struct{})
