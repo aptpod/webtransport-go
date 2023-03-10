@@ -91,14 +91,15 @@ func newSession(sessionID sessionID, qconn http3.StreamCreator, requestStr quic.
 	tracingID := qconn.Context().Value(quic.ConnectionTracingKey).(uint64)
 	ctx, ctxCancel := context.WithCancel(context.WithValue(context.Background(), quic.ConnectionTracingKey, tracingID))
 	c := &Session{
-		sessionID:       sessionID,
-		qconn:           qconn,
-		requestStr:      requestStr,
-		ctx:             ctx,
-		streamCtxs:      make(map[int]context.CancelFunc),
-		bidiAcceptQueue: *newAcceptQueue[Stream](),
-		uniAcceptQueue:  *newAcceptQueue[ReceiveStream](),
-		streams:         *newStreamsMap(),
+		sessionID:        sessionID,
+		qconn:            qconn,
+		requestStr:       requestStr,
+		ctx:              ctx,
+		streamCtxs:       make(map[int]context.CancelFunc),
+		bidiAcceptQueue:  *newAcceptQueue[Stream](),
+		uniAcceptQueue:   *newAcceptQueue[ReceiveStream](),
+		streams:          *newStreamsMap(),
+		rcvDatagramQueue: make(chan []byte, 1024),
 	}
 	// precompute the headers for unidirectional streams
 	c.uniStreamHdr = make([]byte, 0, 2+quicvarint.Len(uint64(c.sessionID)))

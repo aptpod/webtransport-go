@@ -109,6 +109,18 @@ func sendDataAndCheckEcho(t *testing.T, sess *webtransport.Session) {
 	require.Equal(t, data, reply)
 }
 
+// opens a new stream on the connection,
+// sends data and checks the echoed data.
+func sendDatagramAndCheckEcho(t *testing.T, sess *webtransport.Session) {
+	t.Helper()
+	data := getRandomData(1024)
+	require.NoError(t, sess.SendMessage(data))
+
+	reply, err := sess.ReceiveMessage()
+	require.NoError(t, err)
+	require.Equal(t, data, reply)
+}
+
 func addHandler(t *testing.T, s *webtransport.Server, connHandler func(*webtransport.Session)) {
 	t.Helper()
 	mux := http.NewServeMux()
@@ -134,6 +146,18 @@ func newEchoHandler(t *testing.T) func(*webtransport.Session) {
 			_, err = io.CopyBuffer(str, str, make([]byte, 100))
 			require.NoError(t, err)
 			require.NoError(t, str.Close())
+		}
+	}
+}
+
+func newDatagramEchoHandler(t *testing.T) func(*webtransport.Session) {
+	return func(sess *webtransport.Session) {
+		for {
+			b, err := sess.ReceiveMessage()
+			if err != nil {
+				break
+			}
+			require.NoError(t, sess.SendMessage(b))
 		}
 	}
 }
@@ -164,6 +188,26 @@ func TestBidirectionalStreamsDataTransfer(t *testing.T) {
 
 		go newEchoHandler(t)(conn)
 		<-done
+	})
+}
+
+func TestDatagramDataTransfer(t *testing.T) {
+	t.Run("client-initiated", func(t *testing.T) {
+		conn, closeServer := establishSession(t, newDatagramEchoHandler(t))
+		defer closeServer()
+		defer conn.CloseWithError(0, "")
+
+		done := make(chan struct{})
+		defer close(done)
+		go func() {
+			select {
+			case <-done:
+			case <-time.After(time.Second * 2):
+				conn.CloseWithError(webtransport.SessionErrorCode(0), "")
+			}
+		}()
+
+		sendDatagramAndCheckEcho(t, conn)
 	})
 }
 

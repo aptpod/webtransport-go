@@ -176,6 +176,7 @@ func (m *sessionManager) AddSession(qconn http3.StreamCreator, id sessionID, req
 	if !ok {
 		sessions = make(map[sessionID]*session)
 		m.conns[qconn] = sessions
+		go m.handleDatagram(qconn)
 	}
 	if sess, ok := sessions[id]; ok {
 		// We might already have an entry of this session.
@@ -183,13 +184,11 @@ func (m *sessionManager) AddSession(qconn http3.StreamCreator, id sessionID, req
 		// that establishes the session.
 		sess.conn = conn
 		close(sess.created)
-		go m.handleDatagram(qconn)
 		return conn
 	}
 	c := make(chan struct{})
 	close(c)
 	sessions[id] = &session{created: c, conn: conn}
-	go m.handleDatagram(qconn)
 	return conn
 }
 
