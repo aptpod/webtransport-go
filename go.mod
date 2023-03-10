@@ -1,6 +1,6 @@
 module github.com/quic-go/webtransport-go
 
-go 1.18
+go 1.19
 
 require (
 	github.com/golang/mock v1.6.0
@@ -16,9 +16,8 @@ require (
 	github.com/onsi/ginkgo/v2 v2.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/quic-go/qpack v0.4.0 // indirect
-	github.com/quic-go/qtls-go1-18 v0.2.0 // indirect
-	github.com/quic-go/qtls-go1-19 v0.2.0 // indirect
-	github.com/quic-go/qtls-go1-20 v0.1.0 // indirect
+	github.com/quic-go/qtls-go1-19 v0.2.1 // indirect
+	github.com/quic-go/qtls-go1-20 v0.1.1 // indirect
 	golang.org/x/crypto v0.4.0 // indirect
 	golang.org/x/exp v0.0.0-20221205204356-47842c84f3db // indirect
 	golang.org/x/mod v0.6.0 // indirect
@@ -28,3 +27,5 @@ require (
 	golang.org/x/tools v0.2.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/quic-go/quic-go => github.com/aptpod/quic-go v0.27.1-0.20230310015227-314a6e642686

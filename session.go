@@ -1,6 +1,7 @@
 package webtransport
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -18,6 +19,8 @@ import (
 type sessionID uint64
 
 const closeWebtransportSessionCapsuleType http3.CapsuleType = 0x2843
+
+var ErrConnClosed = errors.New("webtransport: connection closed")
 
 type acceptQueue[T any] struct {
 	mx sync.Mutex
@@ -80,6 +83,8 @@ type Session struct {
 
 	// TODO: garbage collect streams from when they are closed
 	streams streamsMap
+
+	rcvDatagramQueue chan []byte
 }
 
 func newSession(sessionID sessionID, qconn http3.StreamCreator, requestStr quic.Stream) *Session {
@@ -368,6 +373,34 @@ func (s *Session) OpenUniStreamSync(ctx context.Context) (str SendStream, err er
 		return nil, s.closeErr
 	}
 	return s.addSendStream(qstr), nil
+}
+
+func (s *Session) SendMessage(b []byte) error {
+	buf := &bytes.Buffer{}
+	quicvarint.Write(buf, uint64(s.sessionID))
+	if _, err := buf.Write(b); err != nil {
+		return err
+	}
+	s.closeMx.Lock()
+	defer s.closeMx.Unlock()
+	return s.qconn.SendMessage(buf.Bytes())
+}
+
+func (s *Session) ReceiveMessage() ([]byte, error) {
+	select {
+	case data := <-s.rcvDatagramQueue:
+		return data, nil
+	case <-s.ctx.Done():
+		return nil, ErrConnClosed
+	}
+}
+
+func (s *Session) queueDatagram(data []byte) {
+	select {
+	case <-s.ctx.Done():
+	case s.rcvDatagramQueue <- data:
+	default: // discard due to queue is full
+	}
 }
 
 func (s *Session) LocalAddr() net.Addr {

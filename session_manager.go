@@ -1,7 +1,9 @@
 package webtransport
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"sync"
 	"time"
 
@@ -186,7 +188,51 @@ func (m *sessionManager) AddSession(qconn http3.StreamCreator, id sessionID, req
 	c := make(chan struct{})
 	close(c)
 	sessions[id] = &session{created: c, conn: conn}
+	go m.handleDatagram(qconn)
 	return conn
+}
+
+func (m *sessionManager) handleDatagram(qconn http3.StreamCreator) {
+	m.mx.Lock()
+	sessions, ok := m.conns[qconn]
+	if !ok {
+		sessions = make(map[sessionID]*session)
+		m.conns[qconn] = sessions
+	}
+	m.mx.Unlock()
+
+	for {
+		select {
+		case <-m.ctx.Done():
+			return
+		case <-qconn.Context().Done():
+			return
+		default:
+		}
+
+		data, err := qconn.(quic.Connection).ReceiveMessage()
+		if err != nil {
+			return
+		}
+		if len(data) == 0 {
+			return
+		}
+
+		r := quicvarint.NewReader(bytes.NewReader(data))
+		v, err := quicvarint.Read(r)
+		if err != nil {
+			continue
+		}
+		id := sessionID(v)
+
+		if sess, ok := sessions[id]; ok {
+			b, err := io.ReadAll(r)
+			if err != nil {
+				return
+			}
+			sess.conn.queueDatagram(b)
+		}
+	}
 }
 
 func (m *sessionManager) Close() {
