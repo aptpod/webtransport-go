@@ -377,8 +377,7 @@ func (s *Session) OpenUniStreamSync(ctx context.Context) (str SendStream, err er
 }
 
 func (s *Session) SendMessage(b []byte) error {
-	buf := &bytes.Buffer{}
-	quicvarint.Write(buf, uint64(s.sessionID))
+	buf := bytes.NewBuffer(quicvarint.Append(nil, uint64(s.sessionID)))
 	if _, err := buf.Write(b); err != nil {
 		return err
 	}

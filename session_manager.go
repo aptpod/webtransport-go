@@ -210,7 +210,7 @@ func (m *sessionManager) handleDatagram(qconn http3.StreamCreator) {
 		default:
 		}
 
-		data, err := qconn.(quic.Connection).ReceiveMessage()
+		data, err := qconn.(quic.Connection).ReceiveMessage(m.ctx)
 		if err != nil {
 			return
 		}
