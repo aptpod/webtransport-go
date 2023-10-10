@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/quic-go/webtransport-go"
+	"go.uber.org/goleak"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -295,6 +296,8 @@ func TestStreamsImmediateReset(t *testing.T) {
 }
 
 func TestUnidirectionalStreams(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	sess, closeServer := establishSession(t, func(sess *webtransport.Session) {
 		// Accept a unidirectional stream, read all of its contents,
 		// and echo it on a newly opened unidirectional stream.
