@@ -105,6 +105,7 @@ func TestServerReorderedUpgradeRequest(t *testing.T) {
 	require.NoError(t, err)
 	rsp, err := rt.RoundTrip(req)
 	require.NoError(t, err)
+	defer rsp.Body.Close()
 	qconn := rsp.Body.(http3.Hijacker).StreamCreator()
 	// Open a new stream for a WebTransport session we'll establish later. Stream ID: 4.
 	createStreamAndWrite(t, qconn, 8, []byte("foobar"))
@@ -165,6 +166,7 @@ func TestServerReorderedUpgradeRequestTimeout(t *testing.T) {
 	require.NoError(t, err)
 	rsp, err := rt.RoundTrip(req)
 	require.NoError(t, err)
+	defer rsp.Body.Close()
 	qconn := rsp.Body.(http3.Hijacker).StreamCreator()
 	// Open a new stream for a WebTransport session we'll establish later. Stream ID: 4.
 	str := createStreamAndWrite(t, qconn, 8, []byte("foobar"))
@@ -228,6 +230,7 @@ func TestServerReorderedMultipleStreams(t *testing.T) {
 	require.NoError(t, err)
 	rsp, err := rt.RoundTrip(req)
 	require.NoError(t, err)
+	defer rsp.Body.Close()
 	qconn := rsp.Body.(http3.Hijacker).StreamCreator()
 	start := time.Now()
 	// Open a new stream for a WebTransport session we'll establish later. Stream ID: 4.
@@ -253,6 +256,7 @@ func TestServerReorderedMultipleStreams(t *testing.T) {
 		http3.RoundTripOpt{DontCloseRequestStream: true},
 	)
 	require.NoError(t, err)
+	defer rsp.Body.Close()
 	require.Equal(t, 200, rsp.StatusCode)
 	sconn := <-connChan
 	defer sconn.CloseWithError(0, "")

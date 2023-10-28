@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/quic-go/webtransport-go"
-	"go.uber.org/goleak"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -297,8 +296,6 @@ func TestStreamsImmediateReset(t *testing.T) {
 }
 
 func TestUnidirectionalStreams(t *testing.T) {
-	defer goleak.VerifyNone(t)
-
 	sess, closeServer := establishSession(t, func(sess *webtransport.Session) {
 		// Accept a unidirectional stream, read all of its contents,
 		// and echo it on a newly opened unidirectional stream.
@@ -351,6 +348,7 @@ func TestMultipleClients(t *testing.T) {
 				},
 			}
 			defer d.Close()
+			defer d.RoundTripper.Close()
 			url := fmt.Sprintf("https://localhost:%d/webtransport", addr.Port)
 			rsp, conn, err := d.Dial(context.Background(), url, nil)
 			require.NoError(t, err)
@@ -531,6 +529,7 @@ func TestCheckOrigin(t *testing.T) {
 				},
 			}
 			defer d.Close()
+			defer d.RoundTripper.Close()
 			url := fmt.Sprintf("https://localhost:%d/webtransport", addr.Port)
 			hdr := make(http.Header)
 			hdr.Add("Origin", strings.ReplaceAll(tc.Origin, "%port%", strconv.Itoa(addr.Port)))

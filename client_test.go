@@ -77,6 +77,8 @@ func TestClientInvalidResponseHandling(t *testing.T) {
 			TLSClientConfig: &tls.Config{RootCAs: certPool},
 		},
 	}
+	defer d.Close()
+	defer d.RoundTripper.Close()
 	_, _, err = d.Dial(context.Background(), fmt.Sprintf("https://localhost:%d", s.Addr().(*net.UDPAddr).Port), nil)
 	require.Error(t, err)
 	sErr := <-errChan
